@@ -110,9 +110,19 @@ jobs:
         shell: bash
         run: node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=x64
 
-      - name: Build and package
+      - name: Build desktop bundles
         shell: bash
-        run: pnpm build:win
+        run: pnpm run build:desktop
+
+      # Why not `pnpm build:win`: electron-builder auto-publishes when it detects
+      # CI, and that path demands a GH_TOKEN it has no reason to want here. The
+      # packaged script cannot pass `--publish never`, so invoke it directly.
+      - name: Package installer
+        shell: bash
+        run: |
+          pnpm run ensure:electron-runtime
+          pnpm exec electron-builder --config config/electron-builder.config.cjs \
+            --win nsis --x64 --publish never
         env:
           ORCA_BUILD_COMMIT: ${{ github.sha }}
 
@@ -185,7 +195,7 @@ jobs:
         run: |
           pnpm run ensure:electron-runtime
           pnpm exec electron-builder --config config/electron-builder.config.cjs \
-            --mac dmg --${{ inputs.mac_arch || 'arm64' }}
+            --mac dmg --${{ inputs.mac_arch || 'arm64' }} --publish never
         env:
           ORCA_BUILD_COMMIT: ${{ github.sha }}
 
