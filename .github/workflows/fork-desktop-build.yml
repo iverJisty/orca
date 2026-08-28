@@ -1,0 +1,198 @@
+name: Fork Desktop Build (unsigned)
+
+# Why this exists next to adhoc-mac-build.yml: that workflow refuses fork and PR
+# refs by design (it runs the checked-out code beside the release signing
+# credentials) and needs org secrets a fork cannot read. So a fork has no way to
+# cut a Windows or macOS client for testing a branch. This one drops signing,
+# notarization, and release publishing, and leaves the installers as run
+# artifacts instead.
+#
+# Build a branch by pushing it under build/**:
+#
+#   git push <fork-remote> my-branch:build/my-branch
+#
+# Or dispatch and name the ref, with an optional macOS arch (default arm64):
+#
+#   gh workflow run fork-desktop-build.yml --ref build/my-branch \
+#     -f ref=my-branch -f mac_arch=x64
+#
+# Both installers are unsigned:
+#   - Windows: SmartScreen warns on first run — "More info" then "Run anyway".
+#   - macOS: ad-hoc signed only (forceCodeSigning is false while ORCA_MAC_RELEASE
+#     is unset), so clear quarantine after copying it in:
+#       xattr -dr com.apple.quarantine /Applications/Orca.app
+#
+# Neither is an update target for an installed Stable/RC copy, and these builds
+# do not auto-update themselves either: they carry the release publisherName in
+# app-update.yml without a matching signature, so electron-updater rejects what
+# they download. Install manually, and treat each build as disposable.
+
+on:
+  push:
+    branches: ['build/**']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag, or SHA to build (default: the branch this workflow runs from)'
+        required: false
+        default: ''
+        type: string
+      mac_arch:
+        description: 'macOS arch to package'
+        required: false
+        default: arm64
+        type: choice
+        options:
+          - arm64
+          - x64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-desktop-build-${{ inputs.ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  windows:
+    # Why the guard: upstream cuts Windows through dev-channel-win-build.yml with
+    # channel identity and SignPath. This file is fork-only tooling and must stay
+    # inert if it ever reaches stablyai/orca.
+    if: github.repository != 'stablyai/orca'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-win-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-win-
+
+      # Why retried: pnpm install pulls the Electron binary from GitHub release
+      # assets, and that CDN returns transient 504s often enough to lose a build.
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: pnpm install --frozen-lockfile
+
+      # Why x64 only and non-fatal: the relay's process-table addon matters for
+      # Windows SSH hosts, not for a client under test, and the arm64 cross
+      # toolset is the piece most likely to be absent from a hosted runner image.
+      - name: Build Windows process-table addon for the relay
+        continue-on-error: true
+        shell: bash
+        run: node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=x64
+
+      - name: Build and package
+        shell: bash
+        run: pnpm build:win
+        env:
+          ORCA_BUILD_COMMIT: ${{ github.sha }}
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: orca-windows-setup-unsigned
+          path: dist/orca-windows-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    if: github.repository != 'stablyai/orca'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      # Why: the runner holds no Developer ID. Auto-discovery would either pick an
+      # unrelated keychain identity or spend the build failing on it; ad-hoc
+      # signing is what an unsigned test client wants.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-builder-mac-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-mac-
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: pnpm install --frozen-lockfile
+
+      # Why these three separately instead of `pnpm build:mac`: that script packages
+      # every arch the config declares, and cross-rebuilding native modules for the
+      # arch this runner is not doubles the build for a client nobody will install.
+      - name: Build desktop bundles
+        run: pnpm run build:desktop
+
+      - name: Build macOS native helpers
+        run: |
+          pnpm run build:computer-macos
+          pnpm run build:keyboard-layout-macos
+          pnpm run build:notification-status-macos
+
+      - name: Package dmg
+        run: |
+          pnpm run ensure:electron-runtime
+          pnpm exec electron-builder --config config/electron-builder.config.cjs \
+            --mac dmg --${{ inputs.mac_arch || 'arm64' }}
+        env:
+          ORCA_BUILD_COMMIT: ${{ github.sha }}
+
+      - name: Upload dmg
+        uses: actions/upload-artifact@v7
+        with:
+          name: orca-macos-${{ inputs.mac_arch || 'arm64' }}-unsigned
+          path: dist/orca-macos-*.dmg
+          if-no-files-found: error
+          retention-days: 14
