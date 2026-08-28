@@ -10,6 +10,8 @@ import {
   workspacePortScanKeyForTarget
 } from '@/lib/workspace-port-actions'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { getUnavailableWorkspacePortHosts } from '@/lib/workspace-port-host-availability'
+import { getLocalExecutionHostLabel } from '../../../../shared/execution-host'
 import { getExternalWorkspacePorts, getWorkspacePortGroups } from '@/lib/workspace-port-groups'
 import { SelectedTextCopyMenu } from '@/components/SelectedTextCopyMenu'
 import { STATUS_BAR_CONTEXT_MENU_EXEMPT_PROPS } from './status-bar-context-menu-policy'
@@ -29,6 +31,8 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
   const setWorkspacePortScanProjection = useAppStore((s) => s.setWorkspacePortScanProjection)
   const setWorkspacePortScanForKey = useAppStore((s) => s.setWorkspacePortScanForKey)
+  const scansByKey = useAppStore((s) => s.workspacePortScansByKey)
+  const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
   const [open, setOpen] = useState(false)
   const [externalOpen, setExternalOpen] = useState(false)
@@ -45,6 +49,15 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
 
   const workspaceGroups = useMemo(() => getWorkspacePortGroups(scan), [scan])
   const externalPorts = useMemo(() => getExternalWorkspacePorts(scan), [scan])
+  const unavailableHosts = useMemo(() => getUnavailableWorkspacePortHosts(scansByKey), [scansByKey])
+  const hostLabel = useCallback(
+    (environmentId: string | null) =>
+      environmentId
+        ? (runtimeEnvironments.find((environment) => environment.id === environmentId)?.name ??
+          environmentId)
+        : getLocalExecutionHostLabel(),
+    [runtimeEnvironments]
+  )
   const workspacePortCount = workspaceGroups.reduce((count, group) => count + group.ports.length, 0)
   const totalCount = workspacePortCount + externalPorts.length
   const handleOpenChange = useCallback(
@@ -166,6 +179,20 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
               )}
             </span>
           </div>
+
+          {unavailableHosts.length > 0 && (
+            <div className="border-b border-border/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+              {unavailableHosts.map((host) => (
+                <div key={host.scanKey} className="truncate">
+                  {translate(
+                    'auto.components.status.bar.PortsStatusSegment.95495019ed',
+                    'Port scan unavailable on {{value0}}: {{value1}}',
+                    { value0: hostLabel(host.environmentId), value1: host.reason }
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {scan?.unavailableReason ? (
             <div className="px-3 py-3 text-xs text-muted-foreground">

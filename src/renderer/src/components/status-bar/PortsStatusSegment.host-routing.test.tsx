@@ -14,6 +14,7 @@ const { popoverHandle, runWorkspacePortScanForTargetMock, storeState } = vi.hois
     workspacePortScan: null as { key: string; result: WorkspacePortScanResult } | null,
     workspacePortScansByKey: {} as Record<string, WorkspacePortScanResult>,
     workspacePortScanRefreshing: false,
+    runtimeEnvironments: [] as { id: string; name: string }[],
     recordFeatureInteraction: vi.fn(),
     setWorkspacePortScanForKey: vi.fn(),
     setWorkspacePortScanProjection: vi.fn()
@@ -84,7 +85,10 @@ vi.mock('./ports-status-popover-rows', () => ({
 }))
 
 vi.mock('@/i18n/i18n', () => ({
-  translate: (_key: string, fallback: string) => fallback
+  translate: (_key: string, fallback: string, options?: Record<string, unknown>) =>
+    options
+      ? fallback.replace(/{{(\w+)}}/g, (_match, name: string) => String(options[name] ?? ''))
+      : fallback
 }))
 
 import { PortsStatusSegment } from './PortsStatusSegment'
@@ -129,7 +133,9 @@ describe('PortsStatusSegment popover host routing', () => {
     popoverHandle.onOpenChange = null
     storeState.settings = { activeRuntimeEnvironmentId: null }
     storeState.activeWorktreeId = 'runtime-repo::/srv/app'
+    storeState.workspacePortScan = null
     storeState.workspacePortScansByKey = { 'local:all': localHostScan }
+    storeState.runtimeEnvironments = [{ id: 'env-1', name: 'linux-box' }]
     storeState.recordFeatureInteraction.mockClear()
     storeState.setWorkspacePortScanForKey.mockClear()
     storeState.setWorkspacePortScanProjection.mockClear()
@@ -199,6 +205,33 @@ describe('PortsStatusSegment popover host routing', () => {
       'environment:env-1:all',
       expect.objectContaining({ unavailableReason: 'remote scan failed' })
     )
+  })
+
+  it('names the host whose scan failed while another host still reports ports', () => {
+    act(() => {
+      root.unmount()
+    })
+    storeState.workspacePortScansByKey = {
+      'local:all': localHostScan,
+      'environment:env-1:all': {
+        platform: 'linux',
+        scannedAt: 30,
+        ports: [],
+        unavailableReason: 'Remote connection dropped'
+      }
+    }
+    storeState.workspacePortScan = { key: 'all-hosts:all', result: localHostScan }
+    root = createRoot(container)
+    act(() => {
+      root.render(<PortsStatusSegment iconOnly={false} />)
+    })
+
+    expect(container.textContent).toContain(
+      'Port scan unavailable on linux-box: Remote connection dropped'
+    )
+    // Why: the other host's ports must survive the notice, or this reintroduces
+    // the wipe the notice exists to explain.
+    expect(container.textContent).toContain('1 workspace')
   })
 
   it('stays on the local host when the active workspace has no runtime owner', async () => {
