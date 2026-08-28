@@ -105,7 +105,7 @@ function WorktreePortRow({ port }: { port: WorkspacePort }): React.JSX.Element {
   )
   const createBrowserTab = useAppStore((s) => s.createBrowserTab)
   const setRemoteBrowserPageHandle = useAppStore((s) => s.setRemoteBrowserPageHandle)
-  const setWorkspacePortScan = useAppStore((s) => s.setWorkspacePortScan)
+  const setWorkspacePortScanProjection = useAppStore((s) => s.setWorkspacePortScanProjection)
   const setWorkspacePortScanForKey = useAppStore((s) => s.setWorkspacePortScanForKey)
   const setWorkspacePortScanRefreshing = useAppStore((s) => s.setWorkspacePortScanRefreshing)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
@@ -203,8 +203,8 @@ function WorktreePortRow({ port }: { port: WorkspacePort }): React.JSX.Element {
         )
         const refreshResult = await refreshWorkspacePortScanAfterStop({
           runtimeTarget,
-          setWorkspacePortScan,
           setWorkspacePortScanForKey,
+          setWorkspacePortScanProjection,
           getWorkspacePortScansByKey: () => useAppStore.getState().workspacePortScansByKey,
           setWorkspacePortScanRefreshing
         })
@@ -226,8 +226,8 @@ function WorktreePortRow({ port }: { port: WorkspacePort }): React.JSX.Element {
       port,
       recordFeatureInteraction,
       runtimeTarget,
-      setWorkspacePortScan,
       setWorkspacePortScanForKey,
+      setWorkspacePortScanProjection,
       setWorkspacePortScanRefreshing
     ]
   )

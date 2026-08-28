@@ -24,6 +24,7 @@ import {
   killWorkspacePortForTarget,
   getPortOpenBrowserTooltipLabel,
   openWorkspacePortInBrowser,
+  publishWorkspacePortScanForHost,
   refreshWorkspacePortScanAfterStop,
   resolvePortOpenInOrcaBrowser,
   scanWorkspacePortsForTarget,
@@ -166,7 +167,7 @@ function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }): React.
   const setRemoteBrowserPageHandle = useAppStore((s) => s.setRemoteBrowserPageHandle)
   const scansByKey = useAppStore((s) => s.workspacePortScansByKey)
   const refreshing = useAppStore((s) => s.workspacePortScanRefreshing)
-  const setWorkspacePortScan = useAppStore((s) => s.setWorkspacePortScan)
+  const setWorkspacePortScanProjection = useAppStore((s) => s.setWorkspacePortScanProjection)
   const setWorkspacePortScanForKey = useAppStore((s) => s.setWorkspacePortScanForKey)
   const setWorkspacePortScanRefreshing = useAppStore((s) => s.setWorkspacePortScanRefreshing)
   const [detailsPort, setDetailsPort] = useState<WorkspacePort | null>(null)
@@ -193,8 +194,13 @@ function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }): React.
     setWorkspacePortScanRefreshing(true)
     const promise = scanWorkspacePortsForTarget(runtimeTarget)
       .then((nextScan) => {
-        setWorkspacePortScanForKey(scanKey, nextScan)
-        setWorkspacePortScan({ key: scanKey, result: nextScan })
+        publishWorkspacePortScanForHost({
+          scanKey,
+          scan: nextScan,
+          setWorkspacePortScanForKey,
+          setWorkspacePortScanProjection,
+          getWorkspacePortScansByKey: () => useAppStore.getState().workspacePortScansByKey
+        })
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error)
@@ -221,8 +227,8 @@ function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }): React.
     activeRepo,
     runtimeTarget,
     scanKey,
-    setWorkspacePortScan,
     setWorkspacePortScanForKey,
+    setWorkspacePortScanProjection,
     setWorkspacePortScanRefreshing
   ])
 
@@ -257,8 +263,8 @@ function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }): React.
       )
       const refreshResult = await refreshWorkspacePortScanAfterStop({
         runtimeTarget,
-        setWorkspacePortScan,
         setWorkspacePortScanForKey,
+        setWorkspacePortScanProjection,
         getWorkspacePortScansByKey: () => useAppStore.getState().workspacePortScansByKey,
         setWorkspacePortScanRefreshing
       })
@@ -277,8 +283,8 @@ function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }): React.
     [
       activeRepo,
       runtimeTarget,
-      setWorkspacePortScan,
       setWorkspacePortScanForKey,
+      setWorkspacePortScanProjection,
       setWorkspacePortScanRefreshing
     ]
   )
