@@ -451,25 +451,27 @@ describe('PortsPanel runtime routing', () => {
   })
 
   it('returns post-stop refresh failures without throwing', async () => {
-    const setWorkspacePortScan = vi.fn()
+    const setWorkspacePortScanProjection = vi.fn()
     const setWorkspacePortScanRefreshing = vi.fn()
     localScan.mockRejectedValueOnce(new Error('scan failed'))
 
     await expect(
       refreshWorkspacePortScanAfterStop({
         runtimeTarget: { kind: 'local' },
-        setWorkspacePortScan: setWorkspacePortScan as never,
+        setWorkspacePortScanForKey: vi.fn() as never,
+        setWorkspacePortScanProjection: setWorkspacePortScanProjection as never,
+        getWorkspacePortScansByKey: () => ({}),
         setWorkspacePortScanRefreshing: setWorkspacePortScanRefreshing as never
       })
     ).resolves.toEqual({ ok: false, reason: 'scan failed' })
 
-    expect(setWorkspacePortScan).not.toHaveBeenCalled()
+    expect(setWorkspacePortScanProjection).not.toHaveBeenCalled()
     expect(setWorkspacePortScanRefreshing).toHaveBeenNthCalledWith(1, true)
     expect(setWorkspacePortScanRefreshing).toHaveBeenNthCalledWith(2, false)
   })
 
   it('ignores settled remote post-stop refresh failures after updating state', async () => {
-    const setWorkspacePortScan = vi.fn()
+    const setWorkspacePortScanProjection = vi.fn()
     const setWorkspacePortScanRefreshing = vi.fn()
     const firstScan = { ...emptyScan, scannedAt: 2 }
     let scanCalls = 0
@@ -500,7 +502,9 @@ describe('PortsPanel runtime routing', () => {
     await expect(
       refreshWorkspacePortScanAfterStop({
         runtimeTarget: { kind: 'environment', environmentId: 'env-1' },
-        setWorkspacePortScan: setWorkspacePortScan as never,
+        setWorkspacePortScanForKey: vi.fn() as never,
+        setWorkspacePortScanProjection: setWorkspacePortScanProjection as never,
+        getWorkspacePortScansByKey: () => ({}),
         setWorkspacePortScanRefreshing: setWorkspacePortScanRefreshing as never
       })
     ).resolves.toEqual({ ok: true })
@@ -510,8 +514,8 @@ describe('PortsPanel runtime routing', () => {
       'workspacePorts.scan',
       'workspacePorts.scan'
     ])
-    expect(setWorkspacePortScan).toHaveBeenCalledTimes(1)
-    expect(setWorkspacePortScan).toHaveBeenCalledWith({
+    expect(setWorkspacePortScanProjection).toHaveBeenCalledTimes(1)
+    expect(setWorkspacePortScanProjection).toHaveBeenCalledWith({
       key: 'environment:env-1:all',
       result: firstScan
     })
@@ -520,7 +524,7 @@ describe('PortsPanel runtime routing', () => {
   })
 
   it('preserves an all-host projection after refreshing one host post-stop', async () => {
-    const setWorkspacePortScan = vi.fn()
+    const setWorkspacePortScanProjection = vi.fn()
     const setWorkspacePortScanForKey = vi.fn()
     const setWorkspacePortScanRefreshing = vi.fn()
     const localPort: WorkspacePort = { ...workspacePort, id: 'local-port', port: 5173 }
@@ -571,15 +575,15 @@ describe('PortsPanel runtime routing', () => {
     await expect(
       refreshWorkspacePortScanAfterStop({
         runtimeTarget: { kind: 'environment', environmentId: 'env-1' },
-        setWorkspacePortScan: setWorkspacePortScan as never,
         setWorkspacePortScanForKey: setWorkspacePortScanForKey as never,
+        setWorkspacePortScanProjection: setWorkspacePortScanProjection as never,
         getWorkspacePortScansByKey: () => ({ 'local:all': localHostScan }),
         setWorkspacePortScanRefreshing: setWorkspacePortScanRefreshing as never
       })
     ).resolves.toEqual({ ok: true })
 
     expect(setWorkspacePortScanForKey).toHaveBeenCalledWith('environment:env-1:all', remoteHostScan)
-    expect(setWorkspacePortScan).toHaveBeenLastCalledWith({
+    expect(setWorkspacePortScanProjection).toHaveBeenLastCalledWith({
       key: 'all-hosts:all',
       result: expect.objectContaining({
         ports: expect.arrayContaining([

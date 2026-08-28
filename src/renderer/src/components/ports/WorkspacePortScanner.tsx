@@ -5,6 +5,7 @@ import { getActiveRuntimeTarget, type RuntimeClientTarget } from '@/runtime/runt
 import {
   mergeWorkspacePortScans,
   runtimeTargetForExecutionHostId,
+  WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY,
   scanWorkspacePortsForTarget,
   workspacePortScanKeyForTarget
 } from '@/lib/workspace-port-actions'
@@ -146,7 +147,7 @@ export function WorkspacePortScanner({ enabled = true }: { enabled?: boolean }):
             const merged = mergeWorkspacePortScans(scansByKey)
             const projectionKey =
               allTargets.length > 1
-                ? 'all-hosts:all'
+                ? WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY
                 : activeScan
                   ? scanKey
                   : workspacePortScanKeyForTarget(allTargets[0])
@@ -215,7 +216,7 @@ export function WorkspacePortScanner({ enabled = true }: { enabled?: boolean }):
         : Object.fromEntries(retainedEntries)
     const retainedProjection = mergeWorkspacePortScans(retainedScans)
     const retainedProjectionKey =
-      targetKeys.size > 1 ? 'all-hosts:all' : Object.keys(retainedScans)[0]
+      targetKeys.size > 1 ? WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY : Object.keys(retainedScans)[0]
     // Why: unchanged hosts stay visible while the replacement RPC runs; removed
     // hosts and the old synthetic aggregate are excluded immediately.
     const nextProjection =

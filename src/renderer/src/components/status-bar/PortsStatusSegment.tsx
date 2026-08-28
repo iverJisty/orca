@@ -5,14 +5,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useAppStore } from '@/store'
 import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import {
+  publishWorkspacePortScanForHost,
   scanWorkspacePortsForTarget,
   workspacePortScanKeyForTarget
 } from '@/lib/workspace-port-actions'
+import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { getExternalWorkspacePorts, getWorkspacePortGroups } from '@/lib/workspace-port-groups'
 import { SelectedTextCopyMenu } from '@/components/SelectedTextCopyMenu'
 import { STATUS_BAR_CONTEXT_MENU_EXEMPT_PROPS } from './status-bar-context-menu-policy'
 import { PortRow, WorkspaceGroupRows } from './ports-status-popover-rows'
 import { translate } from '@/i18n/i18n'
+import type { WorkspacePortScanResult } from '../../../../shared/workspace-ports'
 
 type PortsStatusSegmentProps = {
   compact?: boolean
@@ -24,12 +27,20 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
   const scan = useAppStore((s) => s.workspacePortScan?.result ?? null)
   const refreshing = useAppStore((s) => s.workspacePortScanRefreshing)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
-  const setWorkspacePortScan = useAppStore((s) => s.setWorkspacePortScan)
+  const setWorkspacePortScanProjection = useAppStore((s) => s.setWorkspacePortScanProjection)
   const setWorkspacePortScanForKey = useAppStore((s) => s.setWorkspacePortScanForKey)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
   const [open, setOpen] = useState(false)
   const [externalOpen, setExternalOpen] = useState(false)
-  const runtimeTarget = useMemo(() => getActiveRuntimeTarget(settings), [settings])
+  const runtimeEnvironmentId = useAppStore((s) =>
+    getRuntimeEnvironmentIdForWorktree(s, activeWorktreeId)
+  )
+  // Why: the popover refreshes the active workspace's host, which is not always
+  // the globally focused runtime; scanning the wrong host reports zero ports.
+  const runtimeTarget = useMemo(
+    () => getActiveRuntimeTarget({ ...settings, activeRuntimeEnvironmentId: runtimeEnvironmentId }),
+    [runtimeEnvironmentId, settings]
+  )
   const scanKey = workspacePortScanKeyForTarget(runtimeTarget)
 
   const workspaceGroups = useMemo(() => getWorkspacePortGroups(scan), [scan])
@@ -45,21 +56,24 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
       recordFeatureInteraction('ports')
       // Why: the 30s background poll is intentionally quiet; opening the
       // popover should still collapse that stale window without flashing icons.
-      void scanWorkspacePortsForTarget(runtimeTarget)
-        .then((result) => {
-          setWorkspacePortScanForKey(scanKey, result)
-          setWorkspacePortScan({ key: scanKey, result })
+      const publish = (result: WorkspacePortScanResult): void => {
+        publishWorkspacePortScanForHost({
+          scanKey,
+          scan: result,
+          setWorkspacePortScanForKey,
+          setWorkspacePortScanProjection,
+          getWorkspacePortScansByKey: () => useAppStore.getState().workspacePortScansByKey
         })
+      }
+      void scanWorkspacePortsForTarget(runtimeTarget)
+        .then(publish)
         .catch((error) => {
           const message = error instanceof Error ? error.message : String(error)
-          setWorkspacePortScan({
-            key: scanKey,
-            result: {
-              platform: 'unknown',
-              scannedAt: Date.now(),
-              ports: [],
-              unavailableReason: message || 'Workspace port scan failed.'
-            }
+          publish({
+            platform: 'unknown',
+            scannedAt: Date.now(),
+            ports: [],
+            unavailableReason: message || 'Workspace port scan failed.'
           })
         })
     },
@@ -67,8 +81,8 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
       recordFeatureInteraction,
       runtimeTarget,
       scanKey,
-      setWorkspacePortScan,
-      setWorkspacePortScanForKey
+      setWorkspacePortScanForKey,
+      setWorkspacePortScanProjection
     ]
   )
 
