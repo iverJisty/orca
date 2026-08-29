@@ -5,10 +5,8 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkspacePort, WorkspacePortScanResult } from '../../../../shared/workspace-ports'
 
-const { popoverHandle, runWorkspacePortScanForTargetMock, storeState } = vi.hoisted(() => ({
-  popoverHandle: { onOpenChange: null as ((open: boolean) => void) | null },
-  runWorkspacePortScanForTargetMock: vi.fn(),
-  storeState: {
+const { popoverHandle, runWorkspacePortScanForTargetMock, storeState } = vi.hoisted(() => {
+  const storeState = {
     settings: { activeRuntimeEnvironmentId: null as string | null },
     activeWorktreeId: 'runtime-repo::/srv/app',
     workspacePortScan: null as { key: string; result: WorkspacePortScanResult } | null,
@@ -16,10 +14,31 @@ const { popoverHandle, runWorkspacePortScanForTargetMock, storeState } = vi.hois
     workspacePortScanRefreshing: false,
     runtimeEnvironments: [] as { id: string; name: string }[],
     recordFeatureInteraction: vi.fn(),
-    setWorkspacePortScanForKey: vi.fn(),
-    setWorkspacePortScanProjection: vi.fn()
+    setWorkspacePortScanForKey:
+      vi.fn<(key: string, result: WorkspacePortScanResult | null) => void>(),
+    setWorkspacePortScanProjection:
+      vi.fn<(projection: { key: string; result: WorkspacePortScanResult } | null) => void>()
   }
-}))
+  // Why: the real store writes back. Bare spies let a publish and the notice
+  // that reads it drift onto different scan keys with every assertion green.
+  storeState.setWorkspacePortScanForKey.mockImplementation((key, result) => {
+    const next = { ...storeState.workspacePortScansByKey }
+    if (result) {
+      next[key] = result
+    } else {
+      delete next[key]
+    }
+    storeState.workspacePortScansByKey = next
+  })
+  storeState.setWorkspacePortScanProjection.mockImplementation((projection) => {
+    storeState.workspacePortScan = projection
+  })
+  return {
+    popoverHandle: { onOpenChange: null as ((open: boolean) => void) | null },
+    runWorkspacePortScanForTargetMock: vi.fn(),
+    storeState
+  }
+})
 
 vi.mock('@/store', () => {
   const useAppStore = Object.assign(
@@ -207,6 +226,21 @@ describe('PortsStatusSegment popover host routing', () => {
     )
   })
 
+  // Why: separate tests already cover "the failure is stored" and "a stored
+  // failure renders". Only this one proves both halves name the same scan key.
+  it('surfaces the host it just failed to scan on the next render', async () => {
+    runWorkspacePortScanForTargetMock.mockRejectedValueOnce(new Error('remote scan failed'))
+
+    await openPopover()
+    act(() => {
+      root.render(<PortsStatusSegment iconOnly={false} />)
+    })
+
+    expect(container.textContent).toContain(
+      'Port scan unavailable on linux-box: remote scan failed'
+    )
+  })
+
   it('names the host whose scan failed while another host still reports ports', () => {
     act(() => {
       root.unmount()
@@ -229,8 +263,8 @@ describe('PortsStatusSegment popover host routing', () => {
     expect(container.textContent).toContain(
       'Port scan unavailable on linux-box: Remote connection dropped'
     )
-    // Why: the other host's ports must survive the notice, or this reintroduces
-    // the wipe the notice exists to explain.
+    // The notice sits above the list rather than replacing it: a reachable
+    // host's count still renders.
     expect(container.textContent).toContain('1 workspace')
   })
 
