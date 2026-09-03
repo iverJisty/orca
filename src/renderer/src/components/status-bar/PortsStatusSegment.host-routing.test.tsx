@@ -288,6 +288,71 @@ describe('PortsStatusSegment popover host routing', () => {
     expect(container.textContent).toContain('1 workspace')
   })
 
+  // Why: a failed scan keeps the host's last-good ports, and the badge and
+  // header count them. Replacing the list with the notice left the popover
+  // claiming N ports over an empty body.
+  it('keeps the list under the notice when a failed scan retained its ports', () => {
+    act(() => {
+      root.unmount()
+    })
+    storeState.activeWorktreeId = 'local-repo::/home/dev/app'
+    const retained: WorkspacePortScanResult = {
+      ...localHostScan,
+      unavailableReason: 'lsof is unavailable'
+    }
+    storeState.workspacePortScansByKey = { 'local:all': retained }
+    storeState.workspacePortScan = { key: 'local:all', result: retained }
+    root = createRoot(container)
+    act(() => {
+      root.render(<PortsStatusSegment iconOnly={false} />)
+    })
+
+    expect(container.textContent).toContain('1 workspace · 0 external')
+    expect(container.querySelectorAll('[data-testid="workspace-group-rows"]')).toHaveLength(1)
+    expect(container.textContent).toContain('Port scan unavailable on Local')
+  })
+
+  // Why: total loss of contact is where naming the host matters most, and the
+  // merged projection can only offer platform 'unknown' and raw scan keys.
+  it('names every host when all of them failed with nothing left to list', () => {
+    act(() => {
+      root.unmount()
+    })
+    const merged: WorkspacePortScanResult = {
+      platform: 'unknown',
+      scannedAt: 30,
+      ports: [],
+      unavailableReason: 'local:all: lsof is unavailable; environment:env-1:all: dropped'
+    }
+    storeState.workspacePortScansByKey = {
+      'local:all': {
+        platform: 'darwin',
+        scannedAt: 30,
+        ports: [],
+        unavailableReason: 'lsof is unavailable'
+      },
+      'environment:env-1:all': {
+        platform: 'linux',
+        scannedAt: 30,
+        ports: [],
+        unavailableReason: 'dropped'
+      }
+    }
+    storeState.workspacePortScan = { key: 'all-hosts:all', result: merged }
+    root = createRoot(container)
+    act(() => {
+      root.render(<PortsStatusSegment iconOnly={false} />)
+    })
+
+    expect(container.textContent).toContain('Port scan unavailable on Local')
+    expect(container.textContent).toContain('Port scan unavailable on linux-box: dropped')
+    expect(container.textContent).not.toContain('unavailable on unknown')
+    expect(container.textContent).not.toContain('environment:env-1:all:')
+    // The notice takes over the body only when there is nothing left to list.
+    expect(container.querySelectorAll('[data-testid="workspace-group-rows"]')).toHaveLength(0)
+    expect(container.textContent).not.toContain('No workspace ports detected')
+  })
+
   it('stays on the local host when the active workspace has no runtime owner', async () => {
     act(() => {
       root.unmount()

@@ -3,14 +3,16 @@ import { Plug, ChevronDown, ChevronRight, LoaderCircle } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAppStore } from '@/store'
-import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
 import {
   publishWorkspacePortScanForHost,
   scanWorkspacePortsForTarget,
   workspacePortScanKeyForTarget
 } from '@/lib/workspace-port-actions'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
-import { getUnavailableWorkspacePortHosts } from '@/lib/workspace-port-host-availability'
+import { useWorktreeRuntimeTarget } from '@/runtime/use-worktree-runtime-target'
+import {
+  getUnavailableWorkspacePortHosts,
+  type WorkspacePortHostRef
+} from '@/lib/workspace-port-host-availability'
 import { getLocalExecutionHostLabel } from '../../../../shared/execution-host'
 import { getExternalWorkspacePorts, getWorkspacePortGroups } from '@/lib/workspace-port-groups'
 import { SelectedTextCopyMenu } from '@/components/SelectedTextCopyMenu'
@@ -26,7 +28,6 @@ type PortsStatusSegmentProps = {
 
 /** Status-bar plug icon with the workspace port count and a per-host ports popover. */
 export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React.JSX.Element {
-  const settings = useAppStore((s) => s.settings)
   const scan = useAppStore((s) => s.workspacePortScan?.result ?? null)
   const refreshing = useAppStore((s) => s.workspacePortScanRefreshing)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
@@ -36,30 +37,47 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
   const [open, setOpen] = useState(false)
   const [externalOpen, setExternalOpen] = useState(false)
-  const runtimeEnvironmentId = useAppStore((s) =>
-    getRuntimeEnvironmentIdForWorktree(s, activeWorktreeId)
-  )
-  // Why: the popover refreshes the active workspace's host, which is not always
-  // the globally focused runtime; scanning the wrong host reports zero ports.
-  const runtimeTarget = useMemo(
-    () => getActiveRuntimeTarget({ ...settings, activeRuntimeEnvironmentId: runtimeEnvironmentId }),
-    [runtimeEnvironmentId, settings]
-  )
+  const runtimeTarget = useWorktreeRuntimeTarget(activeWorktreeId)
   const scanKey = workspacePortScanKeyForTarget(runtimeTarget)
 
   const workspaceGroups = useMemo(() => getWorkspacePortGroups(scan), [scan])
   const externalPorts = useMemo(() => getExternalWorkspacePorts(scan), [scan])
   const unavailableHosts = useMemo(() => getUnavailableWorkspacePortHosts(scansByKey), [scansByKey])
   const hostLabel = useCallback(
-    (environmentId: string | null) =>
-      environmentId
-        ? (runtimeEnvironments.find((environment) => environment.id === environmentId)?.name ??
-          environmentId)
-        : getLocalExecutionHostLabel(),
+    (host: WorkspacePortHostRef, hostScanKey: string) => {
+      if (host.kind === 'local') {
+        return getLocalExecutionHostLabel()
+      }
+      if (host.kind === 'unknown') {
+        return hostScanKey
+      }
+      return (
+        runtimeEnvironments.find((environment) => environment.id === host.environmentId)?.name ??
+        host.environmentId
+      )
+    },
     [runtimeEnvironments]
   )
   const workspacePortCount = workspaceGroups.reduce((count, group) => count + group.ports.length, 0)
   const totalCount = workspacePortCount + externalPorts.length
+  const unavailableNotices = useMemo<PortScanUnavailableNotice[]>(() => {
+    if (unavailableHosts.length > 0) {
+      return unavailableHosts.map((entry) => ({
+        id: entry.scanKey,
+        host: hostLabel(entry.host, entry.scanKey),
+        reason: entry.reason
+      }))
+    }
+    // Why: a projection published without per-host scans has no host to name.
+    return scan?.unavailableReason
+      ? [{ id: 'projection', host: scan.platform, reason: scan.unavailableReason }]
+      : []
+  }, [hostLabel, scan?.platform, scan?.unavailableReason, unavailableHosts])
+  // Why: a failed scan keeps the host's last-good ports, and those ports are
+  // counted in the badge and header — replacing the list with the notice would
+  // leave the popover claiming N ports over an empty body. Only take over the
+  // body when there is genuinely nothing left to list.
+  const noticeReplacesList = Boolean(scan?.unavailableReason) && totalCount === 0
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       setOpen(nextOpen)
@@ -177,28 +195,18 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
             </span>
           </div>
 
-          {unavailableHosts.length > 0 && (
-            <div className="border-b border-border/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-              {unavailableHosts.map((host) => (
-                <div key={host.scanKey} className="truncate">
-                  {translate(
-                    'auto.components.status.bar.PortsStatusSegment.95495019ed',
-                    'Port scan unavailable on {{value0}}: {{value1}}',
-                    { value0: hostLabel(host.environmentId), value1: host.reason }
-                  )}
-                </div>
-              ))}
-            </div>
+          {unavailableNotices.length > 0 && !noticeReplacesList && (
+            <PortScanUnavailableNotices
+              notices={unavailableNotices}
+              className="border-b border-border/40 px-3 py-1.5 text-[11px] text-muted-foreground"
+            />
           )}
 
-          {scan?.unavailableReason ? (
-            <div className="px-3 py-3 text-xs text-muted-foreground">
-              {translate(
-                'auto.components.status.bar.PortsStatusSegment.95495019ed',
-                'Port scan unavailable on {{value0}}: {{value1}}',
-                { value0: scan.platform, value1: scan.unavailableReason }
-              )}
-            </div>
+          {noticeReplacesList ? (
+            <PortScanUnavailableNotices
+              notices={unavailableNotices}
+              className="px-3 py-3 text-xs text-muted-foreground"
+            />
           ) : (
             <div className="max-h-[28rem] overflow-y-auto scrollbar-sleek">
               {workspaceGroups.length > 0 ? (
@@ -273,5 +281,29 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
         </SelectedTextCopyMenu>
       </PopoverContent>
     </Popover>
+  )
+}
+
+type PortScanUnavailableNotice = { id: string; host: string; reason: string }
+
+function PortScanUnavailableNotices({
+  notices,
+  className
+}: {
+  notices: PortScanUnavailableNotice[]
+  className: string
+}): React.JSX.Element {
+  return (
+    <div className={className}>
+      {notices.map((notice) => (
+        <div key={notice.id} className="truncate">
+          {translate(
+            'auto.components.status.bar.PortsStatusSegment.95495019ed',
+            'Port scan unavailable on {{value0}}: {{value1}}',
+            { value0: notice.host, value1: notice.reason }
+          )}
+        </div>
+      ))}
+    </div>
   )
 }

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { WorkspacePortScanResult } from '../../../shared/workspace-ports'
-import { getUnavailableWorkspacePortHosts } from './workspace-port-host-availability'
+import {
+  getUnavailableWorkspacePortHosts,
+  workspacePortHostForScanKey
+} from './workspace-port-host-availability'
 
 function scan(overrides: Partial<WorkspacePortScanResult> = {}): WorkspacePortScanResult {
   return { platform: 'linux', scannedAt: 1, ports: [], ...overrides }
@@ -16,19 +19,19 @@ describe('getUnavailableWorkspacePortHosts', () => {
     ).toEqual([
       {
         scanKey: 'environment:env-1:all',
-        environmentId: 'env-1',
+        host: { kind: 'environment', environmentId: 'env-1' },
         reason: 'Remote connection dropped'
       }
     ])
   })
 
-  it('reports the local host by a null environment id', () => {
+  it('reports the local host as a local host ref, not an absent environment id', () => {
     expect(
       getUnavailableWorkspacePortHosts({
         'local:all': scan({ unavailableReason: 'lsof is unavailable' }),
         'environment:env-1:all': scan()
       })
-    ).toEqual([{ scanKey: 'local:all', environmentId: null, reason: 'lsof is unavailable' }])
+    ).toEqual([{ scanKey: 'local:all', host: { kind: 'local' }, reason: 'lsof is unavailable' }])
   })
 
   it('keeps colons inside an environment id when parsing the scan key', () => {
@@ -42,33 +45,66 @@ describe('getUnavailableWorkspacePortHosts', () => {
     ).toEqual([
       {
         scanKey: 'environment:weird:id:all',
-        environmentId: 'weird:id',
+        host: { kind: 'environment', environmentId: 'weird:id' },
         reason: 'Remote connection dropped'
       }
     ])
   })
 
-  // Why: the merged projection carries the reason once every host failed, and the
-  // popover renders that in place of the list — a second notice would duplicate it.
-  it('stays silent when every tracked host failed', () => {
+  // Why: total loss of contact is where naming the host matters most — the merged
+  // projection joins raw internal scan keys, so it cannot name them itself.
+  it('names every host when all of them failed', () => {
     expect(
       getUnavailableWorkspacePortHosts({
         'local:all': scan({ unavailableReason: 'lsof is unavailable' }),
         'environment:env-1:all': scan({ unavailableReason: 'Remote connection dropped' })
       })
-    ).toEqual([])
+    ).toEqual([
+      { scanKey: 'local:all', host: { kind: 'local' }, reason: 'lsof is unavailable' },
+      {
+        scanKey: 'environment:env-1:all',
+        host: { kind: 'environment', environmentId: 'env-1' },
+        reason: 'Remote connection dropped'
+      }
+    ])
   })
 
-  it('stays silent for a single failed host', () => {
+  it('names a single failed host', () => {
     expect(
       getUnavailableWorkspacePortHosts({
         'local:all': scan({ unavailableReason: 'lsof is unavailable' })
       })
-    ).toEqual([])
+    ).toEqual([{ scanKey: 'local:all', host: { kind: 'local' }, reason: 'lsof is unavailable' }])
+  })
+
+  // Why: the synthetic all-hosts projection key must never be labelled as the
+  // local machine — that would blame the wrong host for a remote failure.
+  it('marks an unrecognised scan key as an unknown host', () => {
+    expect(
+      getUnavailableWorkspacePortHosts({
+        'all-hosts:all': scan({ unavailableReason: 'Remote connection dropped' })
+      })
+    ).toEqual([
+      { scanKey: 'all-hosts:all', host: { kind: 'unknown' }, reason: 'Remote connection dropped' }
+    ])
   })
 
   it('stays silent when nothing failed', () => {
     expect(getUnavailableWorkspacePortHosts({ 'local:all': scan() })).toEqual([])
     expect(getUnavailableWorkspacePortHosts({})).toEqual([])
+  })
+})
+
+describe('workspacePortHostForScanKey', () => {
+  it.each([
+    ['local:all', { kind: 'local' }],
+    ['environment:env-1:all', { kind: 'environment', environmentId: 'env-1' }],
+    ['environment:weird:id:all', { kind: 'environment', environmentId: 'weird:id' }],
+    ['all-hosts:all', { kind: 'unknown' }],
+    ['environment::all', { kind: 'unknown' }],
+    ['environment:env-1', { kind: 'unknown' }],
+    ['local', { kind: 'unknown' }]
+  ])('maps %s', (scanKey, expected) => {
+    expect(workspacePortHostForScanKey(scanKey)).toEqual(expected)
   })
 })

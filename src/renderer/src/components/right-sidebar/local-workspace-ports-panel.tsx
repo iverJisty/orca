@@ -4,8 +4,7 @@ import { toast } from 'sonner'
 import { useAppStore } from '@/store'
 import { useActiveWorktree, useRepoById } from '@/store/selectors'
 import { cn } from '@/lib/utils'
-import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { useWorktreeRuntimeTarget } from '@/runtime/use-worktree-runtime-target'
 import {
   killWorkspacePortForTarget,
   openWorkspacePortInBrowser,
@@ -41,15 +40,9 @@ export function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }):
     external: true
   })
 
-  const runtimeTarget = useMemo(() => {
-    const activeRuntimeEnvironmentId = getRuntimeEnvironmentIdForWorktree(
-      useAppStore.getState(),
-      activeWorktree?.id
-    )
-    // Why: the Ports panel acts on the active workspace; use that workspace's
-    // host owner even if the sidebar is focused elsewhere.
-    return getActiveRuntimeTarget({ ...settings, activeRuntimeEnvironmentId })
-  }, [activeWorktree?.id, settings])
+  // Why: the Ports panel acts on the active workspace; use that workspace's
+  // host owner even if the sidebar is focused elsewhere.
+  const runtimeTarget = useWorktreeRuntimeTarget(activeWorktree?.id)
   const scanKey = `${workspacePortRuntimeTargetKey(runtimeTarget)}:all`
 
   const refresh = useCallback(() => {

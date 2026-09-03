@@ -1,9 +1,18 @@
 import type { WorkspacePortScanResult } from '../../../shared/workspace-ports'
 
+/**
+ * Host a per-host scan key points at. `unknown` is kept distinct from `local` so
+ * an unrecognised key (a synthetic projection key that leaked into the per-host
+ * map, say) is never mislabelled as a local failure.
+ */
+export type WorkspacePortHostRef =
+  | { kind: 'local' }
+  | { kind: 'environment'; environmentId: string }
+  | { kind: 'unknown' }
+
 export type UnavailableWorkspacePortHost = {
   scanKey: string
-  /** null for the local host; otherwise the paired runtime environment's id. */
-  environmentId: string | null
+  host: WorkspacePortHostRef
   reason: string
 }
 
@@ -13,46 +22,35 @@ export type UnavailableWorkspacePortHost = {
 // `:all` keeps environment ids that themselves contain colons intact.
 const ENVIRONMENT_SCAN_KEY_PREFIX = 'environment:'
 const SCAN_KEY_SUFFIX = ':all'
+const LOCAL_SCAN_KEY = `local${SCAN_KEY_SUFFIX}`
 
-/** Runtime environment id for a per-host scan key; null for the local host or unknown shapes. */
-function environmentIdForScanKey(scanKey: string): string | null {
-  if (!scanKey.endsWith(SCAN_KEY_SUFFIX)) {
-    return null
+/** Host a per-host scan key names; `unknown` for any other key shape. */
+export function workspacePortHostForScanKey(scanKey: string): WorkspacePortHostRef {
+  if (scanKey === LOCAL_SCAN_KEY) {
+    return { kind: 'local' }
   }
-  const targetKey = scanKey.slice(0, -SCAN_KEY_SUFFIX.length)
-  if (!targetKey.startsWith(ENVIRONMENT_SCAN_KEY_PREFIX)) {
-    return null
+  if (!scanKey.endsWith(SCAN_KEY_SUFFIX) || !scanKey.startsWith(ENVIRONMENT_SCAN_KEY_PREFIX)) {
+    return { kind: 'unknown' }
   }
-  const environmentId = targetKey.slice(ENVIRONMENT_SCAN_KEY_PREFIX.length)
-  return environmentId || null
+  const environmentId = scanKey.slice(
+    ENVIRONMENT_SCAN_KEY_PREFIX.length,
+    scanKey.length - SCAN_KEY_SUFFIX.length
+  )
+  return environmentId ? { kind: 'environment', environmentId } : { kind: 'unknown' }
 }
 
 /**
- * Hosts whose latest scan failed while another host still reported.
- * Why: the merged projection only carries `unavailableReason` when every host
- * failed, so one unreachable server would otherwise read as "that workspace has
- * no ports" — and on a remote host, "none listening" and "could not look" are
- * different answers.
+ * Every host whose latest scan failed, named by host rather than by scan key.
+ * Why: on a remote host "none listening" and "could not look" are different
+ * answers, and the merged projection collapses both the partial case (no reason
+ * at all) and the total case (reasons joined with raw internal keys).
  */
 export function getUnavailableWorkspacePortHosts(
   scansByKey: Record<string, WorkspacePortScanResult>
 ): UnavailableWorkspacePortHost[] {
-  const entries = Object.entries(scansByKey)
-  const failed = entries.filter(([, scan]) => Boolean(scan?.unavailableReason))
-  // Every host failed: the projection carries the reason and the popover already
-  // renders it in place of the list.
-  if (failed.length === 0 || failed.length === entries.length) {
-    return []
-  }
-  return failed.flatMap(([scanKey, scan]) =>
-    scan.unavailableReason
-      ? [
-          {
-            scanKey,
-            environmentId: environmentIdForScanKey(scanKey),
-            reason: scan.unavailableReason
-          }
-        ]
+  return Object.entries(scansByKey).flatMap(([scanKey, scan]) =>
+    scan?.unavailableReason
+      ? [{ scanKey, host: workspacePortHostForScanKey(scanKey), reason: scan.unavailableReason }]
       : []
   )
 }

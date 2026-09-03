@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback } from 'react'
 import { Copy, ExternalLink, FolderOpen, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -15,9 +15,8 @@ import {
 } from '@/lib/workspace-port-actions'
 import type { WorkspacePortGroup } from '@/lib/workspace-port-groups'
 import { useLocalhostLabelRouteForPort } from '@/lib/workspace-port-localhost-label-selector'
-import { getActiveRuntimeTarget } from '@/runtime/runtime-rpc-client'
+import { useWorktreeRuntimeTarget } from '@/runtime/use-worktree-runtime-target'
 import { useAppStore } from '@/store'
-import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
 import type { WorkspacePort } from '../../../../shared/workspace-ports'
 import { translate } from '@/i18n/i18n'
 
@@ -79,20 +78,13 @@ export function PortRow({
 }): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const localhostLabelRoute = useLocalhostLabelRouteForPort(port)
-  const runtimeEnvironmentId = useAppStore((s) =>
-    getRuntimeEnvironmentIdForWorktree(
-      s,
-      port.kind === 'workspace' ? port.owner.worktreeId : activeWorktreeId
-    )
-  )
   const createBrowserTab = useAppStore((s) => s.createBrowserTab)
   const setRemoteBrowserPageHandle = useAppStore((s) => s.setRemoteBrowserPageHandle)
   const replaceWorkspacePortScans = useAppStore((s) => s.replaceWorkspacePortScans)
   const setWorkspacePortScanRefreshing = useAppStore((s) => s.setWorkspacePortScanRefreshing)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
-  const runtimeTarget = useMemo(
-    () => getActiveRuntimeTarget({ ...settings, activeRuntimeEnvironmentId: runtimeEnvironmentId }),
-    [runtimeEnvironmentId, settings]
+  const runtimeTarget = useWorktreeRuntimeTarget(
+    port.kind === 'workspace' ? port.owner.worktreeId : activeWorktreeId
   )
   const processLabel = port.processName ?? (port.pid ? `PID ${port.pid}` : 'Unknown process')
   const canStop = canStopWorkspacePort(port)
