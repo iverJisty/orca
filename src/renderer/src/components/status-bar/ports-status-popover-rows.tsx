@@ -67,6 +67,7 @@ function PortAction({
   )
 }
 
+/** One port row in the status-bar popover, with open/copy/stop actions on its owner host. */
 export function PortRow({
   port,
   activeWorktreeId,
@@ -86,8 +87,7 @@ export function PortRow({
   )
   const createBrowserTab = useAppStore((s) => s.createBrowserTab)
   const setRemoteBrowserPageHandle = useAppStore((s) => s.setRemoteBrowserPageHandle)
-  const setWorkspacePortScanProjection = useAppStore((s) => s.setWorkspacePortScanProjection)
-  const setWorkspacePortScanForKey = useAppStore((s) => s.setWorkspacePortScanForKey)
+  const replaceWorkspacePortScans = useAppStore((s) => s.replaceWorkspacePortScans)
   const setWorkspacePortScanRefreshing = useAppStore((s) => s.setWorkspacePortScanRefreshing)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
   const runtimeTarget = useMemo(
@@ -187,8 +187,7 @@ export function PortRow({
         )
         const refreshResult = await refreshWorkspacePortScanAfterStop({
           runtimeTarget,
-          setWorkspacePortScanForKey,
-          setWorkspacePortScanProjection,
+          replaceWorkspacePortScans,
           getWorkspacePortScansByKey: () => useAppStore.getState().workspacePortScansByKey,
           setWorkspacePortScanRefreshing
         })
@@ -210,8 +209,7 @@ export function PortRow({
       port,
       recordFeatureInteraction,
       runtimeTarget,
-      setWorkspacePortScanForKey,
-      setWorkspacePortScanProjection,
+      replaceWorkspacePortScans,
       setWorkspacePortScanRefreshing
     ]
   )

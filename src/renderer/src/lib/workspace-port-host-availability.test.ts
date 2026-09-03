@@ -31,6 +31,23 @@ describe('getUnavailableWorkspacePortHosts', () => {
     ).toEqual([{ scanKey: 'local:all', environmentId: null, reason: 'lsof is unavailable' }])
   })
 
+  it('keeps colons inside an environment id when parsing the scan key', () => {
+    // Why: keys are `${targetKey}:all`, so the id runs to the last `:all` —
+    // splitting on the first colon would truncate ids that contain colons.
+    expect(
+      getUnavailableWorkspacePortHosts({
+        'local:all': scan(),
+        'environment:weird:id:all': scan({ unavailableReason: 'Remote connection dropped' })
+      })
+    ).toEqual([
+      {
+        scanKey: 'environment:weird:id:all',
+        environmentId: 'weird:id',
+        reason: 'Remote connection dropped'
+      }
+    ])
+  })
+
   // Why: the merged projection carries the reason once every host failed, and the
   // popover renders that in place of the list — a second notice would duplicate it.
   it('stays silent when every tracked host failed', () => {

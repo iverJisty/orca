@@ -97,6 +97,7 @@ function PortAction({
   )
 }
 
+/** One port row on a sidebar worktree card, with open/copy/stop actions on its owner host. */
 function WorktreePortRow({ port }: { port: WorkspacePort }): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const localhostLabelRoute = useLocalhostLabelRouteForPort(port)
@@ -105,8 +106,7 @@ function WorktreePortRow({ port }: { port: WorkspacePort }): React.JSX.Element {
   )
   const createBrowserTab = useAppStore((s) => s.createBrowserTab)
   const setRemoteBrowserPageHandle = useAppStore((s) => s.setRemoteBrowserPageHandle)
-  const setWorkspacePortScanProjection = useAppStore((s) => s.setWorkspacePortScanProjection)
-  const setWorkspacePortScanForKey = useAppStore((s) => s.setWorkspacePortScanForKey)
+  const replaceWorkspacePortScans = useAppStore((s) => s.replaceWorkspacePortScans)
   const setWorkspacePortScanRefreshing = useAppStore((s) => s.setWorkspacePortScanRefreshing)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
   const runtimeTarget = useMemo(
@@ -203,8 +203,7 @@ function WorktreePortRow({ port }: { port: WorkspacePort }): React.JSX.Element {
         )
         const refreshResult = await refreshWorkspacePortScanAfterStop({
           runtimeTarget,
-          setWorkspacePortScanForKey,
-          setWorkspacePortScanProjection,
+          replaceWorkspacePortScans,
           getWorkspacePortScansByKey: () => useAppStore.getState().workspacePortScansByKey,
           setWorkspacePortScanRefreshing
         })
@@ -226,8 +225,7 @@ function WorktreePortRow({ port }: { port: WorkspacePort }): React.JSX.Element {
       port,
       recordFeatureInteraction,
       runtimeTarget,
-      setWorkspacePortScanForKey,
-      setWorkspacePortScanProjection,
+      replaceWorkspacePortScans,
       setWorkspacePortScanRefreshing
     ]
   )

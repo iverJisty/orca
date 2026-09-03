@@ -17,8 +17,7 @@ const {
     settings: { openLinksInApp: true },
     createBrowserTab: vi.fn(),
     setRemoteBrowserPageHandle: vi.fn(),
-    setWorkspacePortScan: vi.fn(),
-    setWorkspacePortScanForKey: vi.fn(),
+    replaceWorkspacePortScans: vi.fn(),
     setWorkspacePortScanRefreshing: vi.fn(),
     recordFeatureInteraction: vi.fn(),
     workspacePortScansByKey: {}

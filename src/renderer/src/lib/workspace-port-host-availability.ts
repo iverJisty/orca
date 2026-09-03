@@ -7,7 +7,25 @@ export type UnavailableWorkspacePortHost = {
   reason: string
 }
 
-const ENVIRONMENT_SCAN_KEY = /^environment:(.+):all$/
+// Why: mirrors workspacePortScanKeyForTarget (`${targetKey}:all`, where the
+// target key is `local` or `environment:<id>`) without importing the heavier
+// workspace-port-actions module into this pure helper. Splitting on the last
+// `:all` keeps environment ids that themselves contain colons intact.
+const ENVIRONMENT_SCAN_KEY_PREFIX = 'environment:'
+const SCAN_KEY_SUFFIX = ':all'
+
+/** Runtime environment id for a per-host scan key; null for the local host or unknown shapes. */
+function environmentIdForScanKey(scanKey: string): string | null {
+  if (!scanKey.endsWith(SCAN_KEY_SUFFIX)) {
+    return null
+  }
+  const targetKey = scanKey.slice(0, -SCAN_KEY_SUFFIX.length)
+  if (!targetKey.startsWith(ENVIRONMENT_SCAN_KEY_PREFIX)) {
+    return null
+  }
+  const environmentId = targetKey.slice(ENVIRONMENT_SCAN_KEY_PREFIX.length)
+  return environmentId || null
+}
 
 /**
  * Hosts whose latest scan failed while another host still reported.
@@ -31,7 +49,7 @@ export function getUnavailableWorkspacePortHosts(
       ? [
           {
             scanKey,
-            environmentId: ENVIRONMENT_SCAN_KEY.exec(scanKey)?.[1] ?? null,
+            environmentId: environmentIdForScanKey(scanKey),
             reason: scan.unavailableReason
           }
         ]

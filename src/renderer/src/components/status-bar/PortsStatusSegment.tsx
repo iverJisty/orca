@@ -24,13 +24,13 @@ type PortsStatusSegmentProps = {
   iconOnly: boolean
 }
 
+/** Status-bar plug icon with the workspace port count and a per-host ports popover. */
 export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React.JSX.Element {
   const settings = useAppStore((s) => s.settings)
   const scan = useAppStore((s) => s.workspacePortScan?.result ?? null)
   const refreshing = useAppStore((s) => s.workspacePortScanRefreshing)
   const activeWorktreeId = useAppStore((s) => s.activeWorktreeId)
-  const setWorkspacePortScanProjection = useAppStore((s) => s.setWorkspacePortScanProjection)
-  const setWorkspacePortScanForKey = useAppStore((s) => s.setWorkspacePortScanForKey)
+  const replaceWorkspacePortScans = useAppStore((s) => s.replaceWorkspacePortScans)
   const scansByKey = useAppStore((s) => s.workspacePortScansByKey)
   const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
@@ -73,8 +73,7 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
         publishWorkspacePortScanForHost({
           scanKey,
           scan: result,
-          setWorkspacePortScanForKey,
-          setWorkspacePortScanProjection,
+          replaceWorkspacePortScans,
           getWorkspacePortScansByKey: () => useAppStore.getState().workspacePortScansByKey
         })
       }
@@ -82,21 +81,19 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
         .then(publish)
         .catch((error) => {
           const message = error instanceof Error ? error.message : String(error)
+          // Why: one dropped scan must not clear the host's last-good ports the
+          // way the background poll's debounce does not; the failure is still
+          // recorded so the host is named by the unavailable notice below.
+          const previous = useAppStore.getState().workspacePortScansByKey[scanKey]
           publish({
-            platform: 'unknown',
+            platform: previous?.platform ?? 'unknown',
             scannedAt: Date.now(),
-            ports: [],
+            ports: previous?.ports ?? [],
             unavailableReason: message || 'Workspace port scan failed.'
           })
         })
     },
-    [
-      recordFeatureInteraction,
-      runtimeTarget,
-      scanKey,
-      setWorkspacePortScanForKey,
-      setWorkspacePortScanProjection
-    ]
+    [recordFeatureInteraction, runtimeTarget, scanKey, replaceWorkspacePortScans]
   )
 
   return (

@@ -43,28 +43,25 @@ function scanWithPort(port: number, scannedAt: number): WorkspacePortScanResult 
   }
 }
 
-/** Mirrors the store's read-after-write semantics for the two scan setters. */
+/** Mirrors the store's replaceWorkspacePortScans semantics: one atomic update. */
 function makeStoreHarness(initial: Record<string, WorkspacePortScanResult> = {}): {
   scansByKey: Record<string, WorkspacePortScanResult>
   projections: { key: string; result: WorkspacePortScanResult }[]
   publisher: Omit<WorkspacePortScanPublisher, 'scanKey' | 'scan'>
 } {
-  const scansByKey: Record<string, WorkspacePortScanResult> = { ...initial }
+  let scansByKey: Record<string, WorkspacePortScanResult> = { ...initial }
   const projections: { key: string; result: WorkspacePortScanResult }[] = []
   return {
-    scansByKey,
+    get scansByKey() {
+      return scansByKey
+    },
     projections,
     publisher: {
-      setWorkspacePortScanForKey: (key: string, result: WorkspacePortScanResult | null) => {
-        if (result) {
-          scansByKey[key] = result
-        } else {
-          delete scansByKey[key]
-        }
-      },
-      setWorkspacePortScanProjection: (
+      replaceWorkspacePortScans: (
+        nextScansByKey: Record<string, WorkspacePortScanResult>,
         projection: { key: string; result: WorkspacePortScanResult } | null
       ) => {
+        scansByKey = nextScansByKey
         if (projection) {
           projections.push(projection)
         }
@@ -109,6 +106,24 @@ describe('publishWorkspacePortScanForHost', () => {
     expect(projection?.key).toBe(WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY)
     expect(projection?.result.ports.map((port) => port.port).sort()).toEqual([3000, 5173])
     expect(Object.keys(harness.scansByKey).sort()).toEqual(['environment:env-1:all', 'local:all'])
+  })
+
+  it('publishes map and projection in a single store update', () => {
+    const harness = makeStoreHarness({ 'local:all': localScan })
+    const replaceSpy = vi.spyOn(harness.publisher, 'replaceWorkspacePortScans')
+
+    publishWorkspacePortScanForHost({
+      ...harness.publisher,
+      scanKey: 'environment:env-1:all',
+      scan: remoteScan
+    })
+
+    // Why: two sequential setter calls notify subscribers twice for one scan;
+    // one atomic replace keeps map and projection from ever disagreeing.
+    expect(replaceSpy).toHaveBeenCalledTimes(1)
+    const [nextScans, projection] = replaceSpy.mock.calls[0]
+    expect(Object.keys(nextScans).sort()).toEqual(['environment:env-1:all', 'local:all'])
+    expect(projection?.key).toBe(WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY)
   })
 
   it('does not accumulate duplicate rows across repeated publishes', () => {

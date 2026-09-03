@@ -14,23 +14,18 @@ const { popoverHandle, runWorkspacePortScanForTargetMock, storeState } = vi.hois
     workspacePortScanRefreshing: false,
     runtimeEnvironments: [] as { id: string; name: string }[],
     recordFeatureInteraction: vi.fn(),
-    setWorkspacePortScanForKey:
-      vi.fn<(key: string, result: WorkspacePortScanResult | null) => void>(),
-    setWorkspacePortScanProjection:
-      vi.fn<(projection: { key: string; result: WorkspacePortScanResult } | null) => void>()
+    replaceWorkspacePortScans:
+      vi.fn<
+        (
+          scansByKey: Record<string, WorkspacePortScanResult>,
+          projection: { key: string; result: WorkspacePortScanResult } | null
+        ) => void
+      >()
   }
-  // Why: the real store writes back. Bare spies let a publish and the notice
+  // Why: the real store writes back. A bare spy lets a publish and the notice
   // that reads it drift onto different scan keys with every assertion green.
-  storeState.setWorkspacePortScanForKey.mockImplementation((key, result) => {
-    const next = { ...storeState.workspacePortScansByKey }
-    if (result) {
-      next[key] = result
-    } else {
-      delete next[key]
-    }
-    storeState.workspacePortScansByKey = next
-  })
-  storeState.setWorkspacePortScanProjection.mockImplementation((projection) => {
+  storeState.replaceWorkspacePortScans.mockImplementation((scansByKey, projection) => {
+    storeState.workspacePortScansByKey = scansByKey
     storeState.workspacePortScan = projection
   })
   return {
@@ -156,8 +151,7 @@ describe('PortsStatusSegment popover host routing', () => {
     storeState.workspacePortScansByKey = { 'local:all': localHostScan }
     storeState.runtimeEnvironments = [{ id: 'env-1', name: 'linux-box' }]
     storeState.recordFeatureInteraction.mockClear()
-    storeState.setWorkspacePortScanForKey.mockClear()
-    storeState.setWorkspacePortScanProjection.mockClear()
+    storeState.replaceWorkspacePortScans.mockClear()
     runWorkspacePortScanForTargetMock.mockReset()
     runWorkspacePortScanForTargetMock.mockResolvedValue(remoteHostScan)
     container = document.createElement('div')
@@ -190,16 +184,18 @@ describe('PortsStatusSegment popover host routing', () => {
       { kind: 'environment', environmentId: 'env-1' },
       undefined
     )
-    expect(storeState.setWorkspacePortScanForKey).toHaveBeenCalledWith(
-      'environment:env-1:all',
-      remoteHostScan
-    )
+    expect(storeState.replaceWorkspacePortScans).toHaveBeenCalledTimes(1)
+    expect(storeState.workspacePortScansByKey['environment:env-1:all']).toBe(remoteHostScan)
   })
 
   it('keeps other hosts in the projection instead of overwriting it with one host', async () => {
     await openPopover()
 
-    expect(storeState.setWorkspacePortScanProjection).toHaveBeenCalledWith({
+    const [, projection] = storeState.replaceWorkspacePortScans.mock.calls.at(-1) as [
+      Record<string, WorkspacePortScanResult>,
+      { key: string; result: WorkspacePortScanResult }
+    ]
+    expect(projection).toEqual({
       key: 'all-hosts:all',
       result: expect.objectContaining({
         ports: expect.arrayContaining([
@@ -215,15 +211,39 @@ describe('PortsStatusSegment popover host routing', () => {
 
     await openPopover()
 
-    const [projection] = storeState.setWorkspacePortScanProjection.mock.calls.at(-1) as [
+    const [, projection] = storeState.replaceWorkspacePortScans.mock.calls.at(-1) as [
+      Record<string, WorkspacePortScanResult>,
       { key: string; result: WorkspacePortScanResult }
     ]
     expect(projection.key).toBe('all-hosts:all')
     expect(projection.result.ports).toEqual([expect.objectContaining({ port: 5173 })])
-    expect(storeState.setWorkspacePortScanForKey).toHaveBeenCalledWith(
-      'environment:env-1:all',
+    expect(storeState.workspacePortScansByKey['environment:env-1:all']).toEqual(
       expect.objectContaining({ unavailableReason: 'remote scan failed' })
     )
+  })
+
+  it('keeps the failed host last-good ports while naming the failure', async () => {
+    storeState.workspacePortScansByKey = {
+      'local:all': localHostScan,
+      'environment:env-1:all': remoteHostScan
+    }
+    runWorkspacePortScanForTargetMock.mockRejectedValueOnce(new Error('remote scan failed'))
+
+    await openPopover()
+
+    // Why: one dropped scan must not clear the host's ports the way the
+    // background poll's debounce does not — the notice names the failure
+    // while the projection keeps serving the last-good rows.
+    const failed = storeState.workspacePortScansByKey['environment:env-1:all']
+    expect(failed.unavailableReason).toBe('remote scan failed')
+    expect(failed.platform).toBe('linux')
+    expect(failed.ports).toEqual([expect.objectContaining({ port: 3000 })])
+    const [, projection] = storeState.replaceWorkspacePortScans.mock.calls.at(-1) as [
+      Record<string, WorkspacePortScanResult>,
+      { key: string; result: WorkspacePortScanResult }
+    ]
+    expect(projection.key).toBe('all-hosts:all')
+    expect(projection.result.ports.map((port) => port.port).sort()).toEqual([3000, 5173])
   })
 
   // Why: separate tests already cover "the failure is stored" and "a stored
@@ -281,7 +301,12 @@ describe('PortsStatusSegment popover host routing', () => {
     await openPopover()
 
     expect(runWorkspacePortScanForTargetMock).toHaveBeenCalledWith({ kind: 'local' }, undefined)
-    expect(storeState.setWorkspacePortScanProjection).toHaveBeenCalledWith({
+    const [nextScans, projection] = storeState.replaceWorkspacePortScans.mock.calls.at(-1) as [
+      Record<string, WorkspacePortScanResult>,
+      { key: string; result: WorkspacePortScanResult }
+    ]
+    expect(nextScans['local:all']).toBe(remoteHostScan)
+    expect(projection).toEqual({
       key: 'local:all',
       result: remoteHostScan
     })

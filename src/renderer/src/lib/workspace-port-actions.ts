@@ -36,19 +36,15 @@ type BrowserTabCreator = ReturnType<typeof useAppStore.getState>['createBrowserT
 type RemoteBrowserPageHandleSetter = ReturnType<
   typeof useAppStore.getState
 >['setRemoteBrowserPageHandle']
-type WorkspacePortScanByKeySetter = ReturnType<
-  typeof useAppStore.getState
->['setWorkspacePortScanForKey']
-type WorkspacePortScanProjectionSetter = ReturnType<
-  typeof useAppStore.getState
->['setWorkspacePortScanProjection']
 type WorkspacePortScanRefreshingSetter = ReturnType<
   typeof useAppStore.getState
 >['setWorkspacePortScanRefreshing']
+type ReplaceWorkspacePortScansSetter = ReturnType<
+  typeof useAppStore.getState
+>['replaceWorkspacePortScans']
 
 export type WorkspacePortScanPublisher = {
-  setWorkspacePortScanForKey: WorkspacePortScanByKeySetter
-  setWorkspacePortScanProjection: WorkspacePortScanProjectionSetter
+  replaceWorkspacePortScans: ReplaceWorkspacePortScansSetter
   getWorkspacePortScansByKey: () => Record<string, WorkspacePortScanResult>
 }
 
@@ -180,22 +176,23 @@ export async function openWorkspacePortInBrowser(args: {
 /**
  * Stores one host's scan and republishes the aggregate the status bar reads.
  * Why: a single-host publish used to overwrite that aggregate, so every other
- * host's ports vanished from the count until the next background poll. The
- * projection setter (not setWorkspacePortScan) keeps the synthetic all-hosts
- * key out of workspacePortScansByKey, where re-merging it would duplicate rows.
+ * host's ports vanished from the count until the next background poll. One
+ * replaceWorkspacePortScans update (not setWorkspacePortScan) keeps the synthetic
+ * all-hosts key out of workspacePortScansByKey, where re-merging it would
+ * duplicate rows — and notifies subscribers once instead of twice for one scan.
  */
 export function publishWorkspacePortScanForHost(
   args: WorkspacePortScanPublisher & { scanKey: string; scan: WorkspacePortScanResult }
 ): void {
-  args.setWorkspacePortScanForKey(args.scanKey, args.scan)
   const scansByKey = { ...args.getWorkspacePortScansByKey(), [args.scanKey]: args.scan }
   const merged = mergeWorkspacePortScans(scansByKey)
-  args.setWorkspacePortScanProjection({
+  args.replaceWorkspacePortScans(scansByKey, {
     key: Object.keys(scansByKey).length > 1 ? WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY : args.scanKey,
     result: merged ?? args.scan
   })
 }
 
+/** Re-scans one host after a port stop (immediately, then settled) and republishes the aggregate. */
 export async function refreshWorkspacePortScanAfterStop(
   args: WorkspacePortScanPublisher & {
     runtimeTarget: RuntimeClientTarget
