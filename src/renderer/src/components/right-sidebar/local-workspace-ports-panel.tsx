@@ -19,7 +19,10 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { WorkspacePort } from '../../../../shared/workspace-ports'
 import { translate } from '@/i18n/i18n'
-import { getLocalWorkspacePortSections } from './local-workspace-port-sections'
+import {
+  getLocalWorkspacePortSections,
+  shouldShowLocalWorkspacePortSections
+} from './local-workspace-port-sections'
 import { LocalPortSection } from './local-port-section'
 import { LocalPortDetailsDialog } from './local-port-details-dialog'
 
@@ -171,6 +174,12 @@ export function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }):
     [activeRepo?.id, activeWorktree?.id, displayScan]
   )
 
+  const showPortSections = shouldShowLocalWorkspacePortSections(displayScan, {
+    activePorts,
+    otherWorkspacePorts,
+    externalPorts
+  })
+
   if (!activeRepo) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-4 text-center text-muted-foreground">
@@ -227,7 +236,7 @@ export function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }):
         </div>
       )}
 
-      {!displayScan?.unavailableReason && (
+      {showPortSections && (
         <>
           <LocalPortSection
             id="active"
