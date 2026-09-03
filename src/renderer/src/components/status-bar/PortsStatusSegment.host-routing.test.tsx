@@ -309,7 +309,7 @@ describe('PortsStatusSegment popover host routing', () => {
 
     expect(container.textContent).toContain('1 workspace · 0 external')
     expect(container.querySelectorAll('[data-testid="workspace-group-rows"]')).toHaveLength(1)
-    expect(container.textContent).toContain('Port scan unavailable on Local')
+    expect(container.textContent).toContain('Port scan unavailable on Local Linux')
   })
 
   // Why: total loss of contact is where naming the host matters most, and the
@@ -344,7 +344,11 @@ describe('PortsStatusSegment popover host routing', () => {
       root.render(<PortsStatusSegment iconOnly={false} />)
     })
 
-    expect(container.textContent).toContain('Port scan unavailable on Local')
+    // Local label comes from the scan's own platform, not the renderer's
+    // userAgent — a paired web client is not the Orca host.
+    expect(container.textContent).toContain(
+      'Port scan unavailable on Local Mac: lsof is unavailable'
+    )
     expect(container.textContent).toContain('Port scan unavailable on linux-box: dropped')
     expect(container.textContent).not.toContain('unavailable on unknown')
     expect(container.textContent).not.toContain('environment:env-1:all:')

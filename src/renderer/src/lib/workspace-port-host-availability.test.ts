@@ -20,6 +20,7 @@ describe('getUnavailableWorkspacePortHosts', () => {
       {
         scanKey: 'environment:env-1:all',
         host: { kind: 'environment', environmentId: 'env-1' },
+        platform: 'linux',
         reason: 'Remote connection dropped'
       }
     ])
@@ -31,7 +32,14 @@ describe('getUnavailableWorkspacePortHosts', () => {
         'local:all': scan({ unavailableReason: 'lsof is unavailable' }),
         'environment:env-1:all': scan()
       })
-    ).toEqual([{ scanKey: 'local:all', host: { kind: 'local' }, reason: 'lsof is unavailable' }])
+    ).toEqual([
+      {
+        scanKey: 'local:all',
+        host: { kind: 'local' },
+        platform: 'linux',
+        reason: 'lsof is unavailable'
+      }
+    ])
   })
 
   it('keeps colons inside an environment id when parsing the scan key', () => {
@@ -46,6 +54,7 @@ describe('getUnavailableWorkspacePortHosts', () => {
       {
         scanKey: 'environment:weird:id:all',
         host: { kind: 'environment', environmentId: 'weird:id' },
+        platform: 'linux',
         reason: 'Remote connection dropped'
       }
     ])
@@ -60,10 +69,16 @@ describe('getUnavailableWorkspacePortHosts', () => {
         'environment:env-1:all': scan({ unavailableReason: 'Remote connection dropped' })
       })
     ).toEqual([
-      { scanKey: 'local:all', host: { kind: 'local' }, reason: 'lsof is unavailable' },
+      {
+        scanKey: 'local:all',
+        host: { kind: 'local' },
+        platform: 'linux',
+        reason: 'lsof is unavailable'
+      },
       {
         scanKey: 'environment:env-1:all',
         host: { kind: 'environment', environmentId: 'env-1' },
+        platform: 'linux',
         reason: 'Remote connection dropped'
       }
     ])
@@ -74,7 +89,14 @@ describe('getUnavailableWorkspacePortHosts', () => {
       getUnavailableWorkspacePortHosts({
         'local:all': scan({ unavailableReason: 'lsof is unavailable' })
       })
-    ).toEqual([{ scanKey: 'local:all', host: { kind: 'local' }, reason: 'lsof is unavailable' }])
+    ).toEqual([
+      {
+        scanKey: 'local:all',
+        host: { kind: 'local' },
+        platform: 'linux',
+        reason: 'lsof is unavailable'
+      }
+    ])
   })
 
   // Why: the synthetic all-hosts projection key must never be labelled as the
@@ -85,8 +107,24 @@ describe('getUnavailableWorkspacePortHosts', () => {
         'all-hosts:all': scan({ unavailableReason: 'Remote connection dropped' })
       })
     ).toEqual([
-      { scanKey: 'all-hosts:all', host: { kind: 'unknown' }, reason: 'Remote connection dropped' }
+      {
+        scanKey: 'all-hosts:all',
+        host: { kind: 'unknown' },
+        platform: 'linux',
+        reason: 'Remote connection dropped'
+      }
     ])
+  })
+
+  // Why: a paired web client's userAgent is not the Orca host's platform, so the
+  // caller labels the local host from the scan's own platform.
+  it("carries the failed scan's platform, and null when it is unknown", () => {
+    expect(
+      getUnavailableWorkspacePortHosts({
+        'local:all': scan({ platform: 'win32', unavailableReason: 'netstat failed' }),
+        'environment:env-1:all': scan({ platform: 'unknown', unavailableReason: 'dropped' })
+      }).map((entry) => entry.platform)
+    ).toEqual(['win32', null])
   })
 
   it('stays silent when nothing failed', () => {

@@ -44,9 +44,11 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
   const externalPorts = useMemo(() => getExternalWorkspacePorts(scan), [scan])
   const unavailableHosts = useMemo(() => getUnavailableWorkspacePortHosts(scansByKey), [scansByKey])
   const hostLabel = useCallback(
-    (host: WorkspacePortHostRef, hostScanKey: string) => {
+    (host: WorkspacePortHostRef, hostScanKey: string, platform: NodeJS.Platform | null) => {
       if (host.kind === 'local') {
-        return getLocalExecutionHostLabel()
+        // Why: a paired web client's own userAgent is not the Orca host's
+        // platform, so name the machine the scan actually ran on.
+        return getLocalExecutionHostLabel(platform)
       }
       if (host.kind === 'unknown') {
         return hostScanKey
@@ -64,7 +66,7 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
     if (unavailableHosts.length > 0) {
       return unavailableHosts.map((entry) => ({
         id: entry.scanKey,
-        host: hostLabel(entry.host, entry.scanKey),
+        host: hostLabel(entry.host, entry.scanKey, entry.platform),
         reason: entry.reason
       }))
     }

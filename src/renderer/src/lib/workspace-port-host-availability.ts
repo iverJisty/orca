@@ -13,6 +13,8 @@ export type WorkspacePortHostRef =
 export type UnavailableWorkspacePortHost = {
   scanKey: string
   host: WorkspacePortHostRef
+  /** Platform the failed scan last ran on; drives the local host's label. */
+  platform: NodeJS.Platform | null
   reason: string
 }
 
@@ -50,7 +52,14 @@ export function getUnavailableWorkspacePortHosts(
 ): UnavailableWorkspacePortHost[] {
   return Object.entries(scansByKey).flatMap(([scanKey, scan]) =>
     scan?.unavailableReason
-      ? [{ scanKey, host: workspacePortHostForScanKey(scanKey), reason: scan.unavailableReason }]
+      ? [
+          {
+            scanKey,
+            host: workspacePortHostForScanKey(scanKey),
+            platform: scan.platform === 'unknown' ? null : scan.platform,
+            reason: scan.unavailableReason
+          }
+        ]
       : []
   )
 }
