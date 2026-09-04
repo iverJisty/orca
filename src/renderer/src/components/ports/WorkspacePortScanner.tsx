@@ -4,11 +4,11 @@ import { getHasAnyWorktreesFromState } from '@/store/selectors'
 import { getActiveRuntimeTarget, type RuntimeClientTarget } from '@/runtime/runtime-rpc-client'
 import {
   mergeWorkspacePortScans,
-  runtimeTargetForExecutionHostId,
   WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY,
   scanWorkspacePortsForTarget,
   workspacePortScanKeyForTarget
 } from '@/lib/workspace-port-actions'
+import { runtimeTargetForExecutionHostId } from '@/runtime/runtime-client-target'
 import { installWindowVisibilityInterval, isWindowVisible } from '@/lib/window-visibility-interval'
 import {
   reconcileTransientPortScanFailures,

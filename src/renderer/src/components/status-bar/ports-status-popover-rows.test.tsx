@@ -45,7 +45,7 @@ vi.mock('@/lib/worktree-activation', () => ({
 }))
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: () => null
+  getExecutionHostIdForWorktree: () => 'local'
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', () => ({

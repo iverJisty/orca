@@ -7,7 +7,6 @@ import {
   type RuntimeClientTarget
 } from '@/runtime/runtime-rpc-client'
 import { toRuntimeWorktreeSelector } from '@/runtime/runtime-worktree-selector'
-import { parseExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import type {
   WorkspacePort,
   WorkspacePortKillResult,
@@ -22,6 +21,8 @@ import { RUNTIME_BROWSER_UNAVAILABLE_MESSAGE } from './client-creation-action-po
 export { addressForPort } from './workspace-port-urls'
 
 const WORKSPACE_PORT_STOP_SETTLE_MS = 500
+const WORKSPACE_PORT_TARGET_UNAVAILABLE_REASON =
+  'Workspace ports are unavailable for this execution host.'
 
 /** Projection key for the merged multi-host view; never a per-host scan key. */
 export const WORKSPACE_PORT_ALL_HOSTS_SCAN_KEY = 'all-hosts:all'
@@ -101,12 +102,15 @@ export function goToWorkspacePortOwner(port: WorkspacePort): boolean {
 export async function openWorkspacePortInBrowser(args: {
   port: WorkspacePort
   activeWorktreeId?: string | null
-  runtimeTarget: RuntimeClientTarget
+  runtimeTarget: RuntimeClientTarget | null
   createBrowserTab: BrowserTabCreator
   setRemoteBrowserPageHandle: RemoteBrowserPageHandleSetter
   openInOrcaBrowser?: boolean
   localhostLabelRoute?: LocalhostWorktreeLabelRoute | null
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!args.runtimeTarget) {
+    return { ok: false, reason: WORKSPACE_PORT_TARGET_UNAVAILABLE_REASON }
+  }
   const rawUrl = browserUrlForPort(args.port)
   let url = rawUrl
   if (args.runtimeTarget.kind === 'local' && args.localhostLabelRoute) {
@@ -195,10 +199,13 @@ export function publishWorkspacePortScanForHost(
 /** Re-scans one host after a port stop (immediately, then settled) and republishes the aggregate. */
 export async function refreshWorkspacePortScanAfterStop(
   args: WorkspacePortScanPublisher & {
-    runtimeTarget: RuntimeClientTarget
+    runtimeTarget: RuntimeClientTarget | null
     setWorkspacePortScanRefreshing: WorkspacePortScanRefreshingSetter
   }
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!args.runtimeTarget) {
+    return { ok: false, reason: WORKSPACE_PORT_TARGET_UNAVAILABLE_REASON }
+  }
   const scanKey = workspacePortScanKeyForTarget(args.runtimeTarget)
   const publishScan = (scan: WorkspacePortScanResult): void => {
     publishWorkspacePortScanForHost({ ...args, scanKey, scan })
@@ -234,19 +241,6 @@ export async function refreshWorkspacePortScanAfterStop(
 
 export function workspacePortRuntimeTargetKey(target: RuntimeClientTarget): string {
   return target.kind === 'local' ? 'local' : `environment:${target.environmentId}`
-}
-
-export function runtimeTargetForExecutionHostId(
-  hostId: ExecutionHostId
-): RuntimeClientTarget | null {
-  const parsed = parseExecutionHostId(hostId)
-  if (parsed?.kind === 'local') {
-    return { kind: 'local' }
-  }
-  if (parsed?.kind === 'runtime') {
-    return { kind: 'environment', environmentId: parsed.environmentId }
-  }
-  return null
 }
 
 export function workspacePortScanKeyForTarget(target: RuntimeClientTarget): string {
@@ -315,9 +309,12 @@ export async function scanWorkspacePortsForTarget(
 }
 
 export async function killWorkspacePortForTarget(
-  target: RuntimeClientTarget,
+  target: RuntimeClientTarget | null,
   args: { repoId: string; pid: number; port: number }
 ): Promise<WorkspacePortKillResult> {
+  if (!target) {
+    return { ok: false, reason: WORKSPACE_PORT_TARGET_UNAVAILABLE_REASON }
+  }
   if (target.kind === 'local') {
     return window.api.workspacePorts.kill(args)
   }

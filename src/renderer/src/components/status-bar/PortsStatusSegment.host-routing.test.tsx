@@ -44,8 +44,15 @@ vi.mock('@/store', () => {
 })
 
 vi.mock('@/lib/worktree-runtime-owner', () => ({
-  getRuntimeEnvironmentIdForWorktree: (_state: unknown, worktreeId: string | null | undefined) =>
-    worktreeId === 'runtime-repo::/srv/app' ? 'env-1' : null
+  getExecutionHostIdForWorktree: (_state: unknown, worktreeId: string | null | undefined) => {
+    if (worktreeId === 'runtime-repo::/srv/app') {
+      return 'runtime:env-1'
+    }
+    if (worktreeId === 'ssh-repo::/srv/app') {
+      return 'ssh:server-1'
+    }
+    return 'local'
+  }
 }))
 
 vi.mock('@/runtime/runtime-rpc-client', async () => {
@@ -379,5 +386,22 @@ describe('PortsStatusSegment popover host routing', () => {
       key: 'local:all',
       result: remoteHostScan
     })
+  })
+
+  it('does not substitute the local host for a direct-SSH workspace', async () => {
+    act(() => {
+      root.unmount()
+    })
+    storeState.activeWorktreeId = 'ssh-repo::/srv/app'
+    root = createRoot(container)
+    act(() => {
+      root.render(<PortsStatusSegment iconOnly={false} />)
+    })
+
+    await openPopover()
+
+    expect(runWorkspacePortScanForTargetMock).not.toHaveBeenCalled()
+    expect(storeState.replaceWorkspacePortScans).not.toHaveBeenCalled()
+    expect(storeState.recordFeatureInteraction).toHaveBeenCalledWith('ports')
   })
 })

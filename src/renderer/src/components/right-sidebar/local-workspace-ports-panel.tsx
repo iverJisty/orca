@@ -46,10 +46,10 @@ export function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }):
   // Why: the Ports panel acts on the active workspace; use that workspace's
   // host owner even if the sidebar is focused elsewhere.
   const runtimeTarget = useWorktreeRuntimeTarget(activeWorktree?.id)
-  const scanKey = `${workspacePortRuntimeTargetKey(runtimeTarget)}:all`
+  const scanKey = runtimeTarget ? `${workspacePortRuntimeTargetKey(runtimeTarget)}:all` : null
 
   const refresh = useCallback(() => {
-    if (!activeRepo) {
+    if (!activeRepo || !runtimeTarget || !scanKey) {
       return Promise.resolve()
     }
     setWorkspacePortScanRefreshing(true)
@@ -93,7 +93,7 @@ export function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }):
 
   // Why: WorkspacePortScanner already owns the 30s all-worktree poll. The
   // panel scopes that shared result instead of starting a second scan loop.
-  const displayScan = isVisible ? (scansByKey[scanKey] ?? null) : null
+  const displayScan = isVisible && scanKey ? (scansByKey[scanKey] ?? null) : null
 
   const toggleSection = useCallback((sectionId: string) => {
     setCollapsedSections((current) => ({ ...current, [sectionId]: !current[sectionId] }))
@@ -208,7 +208,7 @@ export function LocalWorkspacePortsPanel({ isVisible }: { isVisible: boolean }):
               size="icon-xs"
               className="text-muted-foreground hover:text-foreground"
               onClick={() => void refresh()}
-              disabled={refreshing}
+              disabled={refreshing || !runtimeTarget}
               aria-label={translate(
                 'auto.components.right.sidebar.PortsPanel.7822e3edc6',
                 'Refresh Ports'

@@ -38,7 +38,7 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
   const [open, setOpen] = useState(false)
   const [externalOpen, setExternalOpen] = useState(false)
   const runtimeTarget = useWorktreeRuntimeTarget(activeWorktreeId)
-  const scanKey = workspacePortScanKeyForTarget(runtimeTarget)
+  const scanKey = runtimeTarget ? workspacePortScanKeyForTarget(runtimeTarget) : null
 
   const workspaceGroups = useMemo(() => getWorkspacePortGroups(scan), [scan])
   const externalPorts = useMemo(() => getExternalWorkspacePorts(scan), [scan])
@@ -87,6 +87,9 @@ export function PortsStatusSegment({ iconOnly }: PortsStatusSegmentProps): React
         return
       }
       recordFeatureInteraction('ports')
+      if (!runtimeTarget || !scanKey) {
+        return
+      }
       // Why: the 30s background poll is intentionally quiet; opening the
       // popover should still collapse that stale window without flashing icons.
       const publish = (result: WorkspacePortScanResult): void => {
